@@ -1,37 +1,83 @@
-from fastapi import FastAPI, Response, HTTPException, Header, Cookie, Form
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
-from typing import Union
+import json
+from fastapi import FastAPI, Request, Response, Depends
+from fastapi.responses import HTTPResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from database.configurations import init_db, db_session
+from database.models import TodoItem
+from database.schema import ItemSchema
 
-# configure fastapi
+# Configure fastapi
 app = FastAPI()
 
-class Item(BaseModel):
-    name: str
-    price: float
-    is_offer: Union[bool, None] = None
+# Configure static route
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/")
-def awsome_api():
+# Configure template
+templates = Jinja2Templates(directory="templates")
+
+@app.on_event("startup")
+def startup():
     """
-    A simple API that returns a message.
+    Initialize the database on startup.
     """
-    return Response("Hello!")
+    init_db()
+    print("Database initialized.")
 
-@app.get("/Redirect")
-def items():
-    return RedirectResponse(url="/items/")
+@app.get("/", response_class=HTTPResponse)
+def index(request: Request):
+    """
+    Render the index page.
+    """
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    if item_id > 10:
-        raise HTTPException(status_code=404, detail="Item not found")
-    return {"item_id": item_id, "q": q}
+@app.get("api/todo")
+def getItems(session: Session = Depends(db_session)):
+    """
+    Get all todo items.
+    """
+    items = session.query(TodoItem).all()
+    return items
 
-@app.post("/login/")
-def longin_usr(usr_id: str = Form(), password: str = Form()):
-    return {"usr_id": usr_id, "password": password}
+@app.post("/api/todo")
+def addItem(item: ItemSchema, session: Session = Depends(db_session)):
+    """
+    Add a new todo item.
+    """
+    item = TodoItem(task=item.task)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
 
-@app.put("/items/{item_id}")
-def update_item(item_id: int, item: Item):
-    return {"item_name": item.name, "item_id": item_id}
+@app.patch("/api/todo/{id}")
+def update_item(id: int, item: ItemSchema, session: Session = Depends(db_session)):
+    """
+    Update an existing todo item.
+    """
+    todoitem = session.query(TodoItem).get(id)
+    if todoitem:
+        todoitem.task = item.task
+        session.commit()
+        session.close()
+        response = json.dumps({"msg": "Item has been updated."})
+        return Response(content=response, media_type='application/json', status_code=200)
+    else:
+        response = json.dumps({"msg": "Item not found"})
+        return Response(content=response, media_type='application/json', status_code=404)
+    
+@app.delete("/api/todo/{id}")
+def delete_item(id: int, session: Session = Depends(db_session)):
+    """
+    Delete a todo item.
+    """
+    todoitem = session.query(TodoItem).get(id)
+    if todoitem:
+        session.delete(todoitem)
+        session.commit()
+        response = json.dumps({"msg": "Item has been deleted."})
+        return Response(content=response, media_type='application/json', status_code=200)
+    else:
+        response = json.dumps({"msg": "Item not found"})
+        return Response(content=response, media_type='application/json', status_code=404)
