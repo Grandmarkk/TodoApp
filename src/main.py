@@ -1,6 +1,12 @@
+"""
+FastAPI Todo Application
+This is a simple Todo application built using FastAPI and SQLAlchemy.
+It allows users to create, read, update, and delete todo items.
+"""
+
 import json
 from fastapi import FastAPI, Request, Response, Depends
-from fastapi.responses import HTTPResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -25,14 +31,14 @@ def startup():
     init_db()
     print("Database initialized.")
 
-@app.get("/", response_class=HTTPResponse)
+@app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     """
     Render the index page.
     """
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("api/todo")
+@app.get("/api/todo")
 def getItems(session: Session = Depends(db_session)):
     """
     Get all todo items.
